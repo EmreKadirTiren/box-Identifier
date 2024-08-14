@@ -1,6 +1,6 @@
 // Declaring the dependencies
 const express = require('express');
-const mongose = require('mongoose');
+const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
 
@@ -9,13 +9,13 @@ dotenv.config(); // Load environment variables from .env file
 const app = express();
 const port = process.env.PORT || 3000; // Port number
 
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true }); // Connect to MongoDB
-// Telling the database how to tore the data
+mongoose.connect(process.env.MONGO_URI); // Connect to MongoDB
+// Telling the database how to store the data
 const boxSchema = new mongoose.Schema({
     boxId: Number,
     password: String,
     name: String,
-    category: {type: stringify, default: 'Uncategorized'},
+    category: {type: String, default: 'Uncategorized'}, // Default value is 'Uncategorized'
     content: String,
 });
 
@@ -26,7 +26,7 @@ app.use(bodyParser.urlencoded({ extended: true })); // This allows you to send d
 
 
 
-
+// API endpoint to create a new box
 
 app.post('/create', async (req, res) => {
     const boxId = Math.floor(Math.random() * 1000000); // Generate a random number between 0 and 999999
@@ -44,6 +44,31 @@ app.post('/create', async (req, res) => {
     }
     catch (error) {
         res.status(500).send('Error creating box: ' + error.message); // Send an error message
+    }
+});
+
+// API endpoint to get a box by its ID and password
+app.get('/find', async (req, res) => {
+    const { boxId, password } = req.query;
+
+    try {
+        const box = await Box.findOne({boxId}); // Find a box by its ID
+        if (!box) { // If the box does not exist
+            return res.status(404).send('Box not found');
+        }
+
+        if (box.password !== password) { // if entered id and password do not match
+            return res.status(401).send('Invalid ID or password');
+        }
+
+        res.json({ // Send the box data
+            name: box.name,
+            category: box.category,
+            content: box.content,
+        });
+    }
+    catch (error) {
+        res.status(500).send('Error finding box: ' + error.message); // Send an error message
     }
 });
 
