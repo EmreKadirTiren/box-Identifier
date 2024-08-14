@@ -1,0 +1,2 @@
+.env ## Ignore .env file(secrets)
+/node_modules ## Ignore node_modules directory
