@@ -3,6 +3,11 @@ const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
 const dotenv = require('dotenv');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 
 dotenv.config(); // Load environment variables from .env file
@@ -15,11 +20,19 @@ mongoose.connect(process.env.MONGO_URI) // Connect to MongoDB
 
 // Telling the database how to store the data
 const boxSchema = new mongoose.Schema({
-    boxId: String,
+    usernmae: String,
     password: String,
     name: String,
-    category: {type: String, default: 'Uncategorized'}, // Default value is 'Uncategorized'
-    content: String,
+    email: String,
+    boxes: [{ 
+        boxId: String,
+        password: String,
+        boxName: String,
+        boxCategory: String,
+        boxContent: String,          
+    }], // Array of boxes
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
 });
 
 const Box = mongoose.model('Box', boxSchema); // Create a model based on the schema
@@ -27,10 +40,95 @@ const Box = mongoose.model('Box', boxSchema); // Create a model based on the sch
 app.use(bodyParser.json()); // With this you can send JSON to the server and it transforms it into a JavaScript object
 app.use(bodyParser.urlencoded({ extended: true })); // This allows you to send data from a form to the server
 app.use(express.static('public')); // Serve static files from the 'public' directory
+app.use(cors()); // Enable CORS
 
+// API endpoint to register a new user
+app.post('/register', async (req, res) => {
+    const { username, name, email, password } = req.body;
+    const existingUser = await User.findOne({ username }); // Check if the username already exists
+    if(existingUser) { // If the user already exists sends error message
+        return res.status(400).send('User already exists'); 
+    }
+    const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
+    const newUser = new User({ username, name, email, password: hashedPassword }); // Create a new user
+    await newUser.save(); // Save the user to the database
+    res.status(201).send('User registered successfully'); // Send a success message
+});
 
+// API endpoint to login a user
+app.post('/login', async (req, res) => {
+    const { identifier, password } = req.body;
+    const user = await USer.findOne({ $or: [{ username: identifier }, { email: identifier }] }); // Find a user by their username or email
+    if (!user || !await bcrypt.compare(password, user.password)) { // If the user does not exist or the password is incorrect
+        return res.status(401).send('Invalid username/email or password'); // Send an error message
+    }
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET); // Create a JWT token
+    res.json({ token }); // Send the token
+});
+
+// API endpoint to request a password reset
+app.post('/forgot', async (req, res) => {
+    const { email } = req.body;
+    const user = await User.findOne({ email }); // Find a user by their email
+    if (!user) { // If the user does not exist
+        return res.status(404).send('User not found'); // Send an error message
+    }
+
+    const token = crypto.randomBytes(20).toString('hex'); // Generate a random token
+    user.resetPasswordToken = token; //Set token equel to the user's resetPasswordToken
+    user.resetPasswordExpires = Date.now() + 3600000; // Set the token expiration time to 1 hour from now
+    await user.save(); // Save the user to the database
+
+    const transporter = nodemailer.createTransport({ // Create a nodemailer transporter
+        service: 'zoho', // Change this to your email service if needed
+        auth: {
+            user: process.env.EMAIL,
+            pass: process.env.EMAIL_PASSWORD,
+        },
+    });
+
+    const mailOptions = { // Create the email
+        to: user.email,
+        from: process.env.EMAIL,
+        subject: 'Password Reset Request',
+        text: `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n
+            Please click on the following link, or paste this into your browser to complete the process:\n\n
+            http://${req.headers.host}/reset/${token}\n\n
+            If you did not request this, please ignore this email and your password will remain unchanged.\n`,
+    };
+
+    transporter.sendMail(mailOptions, (error) => { // Send the email
+        if (error) {
+            return res.status(500).send('Error sending email: ' + error.message); // Send an error message
+        }
+        res.status(200).send('Email sent'); // Send a success message
+    });
+});
+
+// API endpoint to reset a user's password when they click the link in the email
+app.post('/reset', async (req, res) => {
+    const { token } = req.params; // Get the token from the URL 
+    const { password } = req.body; // Get the new password from the request body
+
+    const user = await User.findOne({
+        resetPasswordToken: token, // Find a user by their resetPasswordToken
+        resetPasswordExpires: { $gt: Date.now() }, // Check if the token has not expired
+    });
+
+    if(!user){ // if resetpasswordtoken is not found or expired
+        return res.status(400).send('Invalid or expired token, send a new  request'); // Send an error message
+        }
+
+        user.password = await bcrypt.hash(password, 10); // Hash the new password
+        user.resetPasswordToken = undefined; // Remove the resetPasswordToken
+        user.resetPasswordExpires = undefined; // Remove the resetPasswordExpires
+        await user.save(); // Save the user to the database
+
+        res.status(200).send('Password reset successfully'); // Send a success message
+    })
+    
+ //TODO: Add API endpoints to create, find, and delete boxes for Authenticated users and Unauthenticated users    
 // API endpoint to create a new box
-
 app.post('/create', async (req, res) => {
     const {boxId, password, name, category, content } = req.body;
 
@@ -81,4 +179,7 @@ app.get('/find', async (req, res) => {
 app.listen(port, () => {  // Start the server
     console.log(`Server is running on port https://localhost:${port}`); // Tells where the server is running
 });
+
+
+
 
