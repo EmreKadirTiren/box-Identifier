@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Box Identifier - A web application to help you organize and identify your moving boxes.">
+    <title>Box Finder</title>
+    <!--TODO: <link rel="stylesheet" href="styles.css"> -->
+</head>
+<body>
+    <header>
+        <h1>Find a Box</h1>
+    </header>
+    <main>
+        <form id="findBoxForm">
+            <label for="boxID">Box ID:</label>
+            <input type="text" id="boxID" name="boxID" required>
+            <br>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            
+            <button type="submit">Find Box</button>
+        </form>
+
+        <div id="boxDetails"></div>
+    </main>
+    <footer>
+        <p>&copy; 2024 Emre Kadir Tiren. All rights reserved.</p>
+    </footer>
+    <script src="findbox.js"></script>
+</body>
+</html>
