@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Box Identifier - A web application to help you organize and identify your moving boxes.">
+    <title>Box Creator</title>
+    <!--TODO: <link rel="stylesheet" href="styles.css"> -->
+</head>
+<body>
+    <header>
+        <h1>Create a Box</h1>
+    </header>
+    <main>
+        <form id="createBoxForm">
+            <label for="boxID">Box ID:</label>
+            <input type="text" id="boxID" name="boxId" required>
+            <br>
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+            <br>
+            <label for="boxName">Box Name:</label>
+            <input type="text" id="boxName" name="name" required>
+            <br>
+            <label for="boxCategory">Box Category:</label>
+            <input type="text" id="boxCategory" name="category">
+            <br>
+            <label for="boxContents">Box Contents:</label>
+            <textarea id="boxContents" name="content" required></textarea>
+            <br>
+            <button type="submit">Create Box</button>
+        </form>
+    </main>
+    <footer>
+        <p>&copy; 2024 Emre Kadir Tiren. All rights reserved.</p>
+    </footer>
+    <script src="createbox.js"></script>
+</body>
+</html>
