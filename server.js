@@ -69,7 +69,7 @@ app.post('/register', async (req, res) => {
 // API endpoint to login a user
 app.post('/login', async (req, res) => {
     const { identifier, password } = req.body;
-    const user = await USer.findOne({ $or: [{ username: identifier }, { email: identifier }] }); // Find a user by their username or email
+    const user = await User.findOne({ $or: [{ username: identifier }, { email: identifier }] }); // Find a user by their username or email
     if (!user || !await bcrypt.compare(password, user.password)) { // If the user does not exist or the password is incorrect
         return res.status(401).send('Invalid username/email or password'); // Send an error message
     }
