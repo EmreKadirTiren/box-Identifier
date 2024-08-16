@@ -39,9 +39,9 @@ const userSchema = new mongoose.Schema({  // Telling the database how to store t
 //Creating a schema for the boxes so unauthenticated users can create boxes
 const boxSchema = new mongoose.Schema({
     boxId: String,
-    boxPassword: String,
-    boxCategory: String,
-    boxContent: String,
+    password: String,
+    category: String,
+    content: String,
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false}, //if there is a user id store it but it is not required
 })
 
@@ -126,7 +126,7 @@ app.post('/reset', async (req, res) => {
         resetPasswordExpires: { $gt: Date.now() }, // Check if the token has not expired
     });
 
-    if(!user){ // if resetpasswordtoken is not found or expired
+    if(!user){  // if resetpasswordtoken is not found or expired
         return res.status(400).send('Invalid or expired token, send a new  request'); // Send an error message
         }
 
@@ -138,7 +138,7 @@ app.post('/reset', async (req, res) => {
         res.status(200).send('Password reset successfully'); // Send a success message
     })
     
- //TODO: Add API endpoints to create, find, and delete boxes for Authenticated users and Unauthenticated users    
+ //TODO: Add API endpoints to delete boxes for Authenticated users and Unauthenticated users    
 
 // API endpoints for authenticated users to create and find
 
@@ -190,11 +190,69 @@ app.get('/find-auth', async (req, res) => {
     }
 });
 
+app.put('update-auth', async (req, res) => {
+    const { boxId, oldPassword, newPassword, name, category, content, token } = req.body;
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const user = decoded.userId; // Get the user ID from the token
+        const box = await Box.findOne({ boxId, userId: user }); // Find a box by its ID and user ID
+
+        if(!box){ // If the box does not exist or the user does not have access to it
+            return res.status(404).send('Box not found or you do not have access to it'); // Send an error message
+        }
+
+        // Update the box data
+        if (oldPassword && newPassword){ // If the old password and new password are provided
+            const isMatch = await bcrypt.compare(oldPassword, box.password); // Check if the old password is correct
+
+            if(!isMatch){ // If the old password is incorrect
+                return res.status(401).send('Old password is incorrect'); // Send an error message
+            }
+            box.password = await bcrypt.hash(newPassword, 10); // Hash the new password
+        }
+        if(name) { // If the name is provided
+            box.name = name; // Set the box name
+        }
+        if(category) { // If the category is provided
+            box.category = category; // Set the box category
+        }
+        if(content) { // If the content is provided
+            box.content = content; // Set the box content
+        }
+
+        await box.save(); // Save the updated box to the database
+        res.status(200).send('Box updated successfully'); // Send a success message
+    } catch {
+        res.status(500).send('Error updating box: ' + error.message); // Send an error message
+    }
+});
+
+app.delete('/delete-auth', async (req, res) => {
+    const { boxId, token } = req.query;
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const user = decoded.userId; // Get the user ID from the token
+        const box = await Box.findOneAndDelete({ boxId, userId: user }); // Find and delete a box by its ID and user ID
+
+        if(!box){ // If the box does not exist or the user does not have access to it
+            return res.status(404).send('Box not found or you do not have access to it'); // Send an error message
+        }
+
+        res.status(200).send('Box deleted successfully'); // Send a success message
+    } catch (error) {
+        res.status(500).send('Error deleting box: ' + error.message); // Send an error message
+    }
+});
 
 
-//TODO: Change api endpoints for unauthenticated users to create and find boxes
+
+// API endpoints for unauthenticated users to create and find boxes
+
+// API endpoint to create a box
 app.post('/create', async (req, res) => {
-    const {boxId, password, name, category, content } = req.body;
+    const { boxId, password, name, category, content } = req.body;
 
     try {
         const existingBox = await Box.findOne({ boxId }) //Check if the boxId already exists
@@ -205,30 +263,29 @@ app.post('/create', async (req, res) => {
         const newBox = new Box({ boxId, password, name, category, content }); // Create a new box
         await newBox.save(); // Save the box to the database
         res.status(201).send('Box created successfully'); // Send a success message
-    }
-    catch (error) {
+    } catch (error) {
         res.status(500).send('Error creating box: ' + error.message); // Send an error message
     }
 });
 
-// API endpoint to get a box by its ID and password
+// API endpoint to get a box by its ID and password for unauthenticated users
 app.get('/find', async (req, res) => {
     const { boxId, password } = req.query;
 
     try {
-        const box = await Box.findOne({boxId}); // Find a box by its ID
+        const box = await Box.findOne({ boxId }); // Find a box by its ID
         if (!box) { // If the box does not exist
             return res.status(404).send('Box not found');
         }
 
-        if (box.password !== password) { // if entered id and password do not match
+        if (box.boxPassword !== password) { // if entered id and password do not match
             return res.status(401).send('Invalid ID or password');
         }
 
         res.json({ // Send the box data
-            name: box.name,
-            category: box.category,
-            content: box.content,
+            name: box.boxName,
+            category: box.boxCategory,
+            content: box.boxContent,
         });
     }
     catch (error) {
@@ -236,8 +293,59 @@ app.get('/find', async (req, res) => {
     }
 });
 
+app.put('/update', async (req, res) => {
+    const { boxId, oldPassword, newPassword, name, category, content } = req.body;
 
+    try {
+        const box = await Box.findOne({ boxId }); // Find a box by its ID
+        const isMatch = await bcrypt.compare(oldPassword, box.password); // Check if the old password is correct
+        
+        if(!box || !isMatch) { // If the box does not exist or the password is incorrect
+            return res.status(404).send('Box not found or old password is invalid'); // Send an error message
+        }
+        
+        
+        
+        if(oldPassword && newPassword) { // If the old password and new password are provided
+            box.password = await bcrypt.hash(newPassword, 10); // Hash the new password
+        }
+        
+        if(name) { // If the name is provided
+            box.name = name; // Set the box name
+        }
 
+        if(category) { // If the category is provided
+            box.category = category; // Set the box category
+        }
+
+        if(content) { // If the content is provided
+            box.content = content; // Set the box content
+        }
+
+        await box.save(); // Save the updated box to the database
+        res.status(200).send('Box updated successfully'); // Send a success message
+        
+    } catch (error) {
+        res.status(500).send('Error updating box: ' + error.message); // Send an
+    }
+});
+
+app.delete('/delete', async (req, res) => {
+    const { boxId, password } = req.query;
+
+    try {
+        const box = await Box.findOne({ boxId }); // Find a box by its ID
+        
+        if(!box || box.password !== password) { // If the box does not exist or the password is incorrect
+            return res.status(404).send('Box not found or password is invalid'); // Send an error message
+        }
+
+        await Box.deleteOne({ boxId }); // Delete the box from the database
+        res.status(200).send('Box deleted successfully from the database'); // Send a success message
+    } catch(error) {
+        res.status(500).send('Error deleting box: ' + error.message); // Send an error message
+    }
+})
 
 
 app.listen(port, () => {  // Start the server
