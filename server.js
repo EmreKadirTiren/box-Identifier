@@ -18,8 +18,9 @@ mongoose.connect(process.env.MONGO_URI) // Connect to MongoDB
     .then(() => console.log('Connected to MongoDB')) // If the connection is successful
     .catch(err => console.error('Failed to connect to MongoDB', err)); // If the connection fails
 
-// Telling the database how to store the data
-const boxSchema = new mongoose.Schema({
+
+//Creating a schema for the users so authenticated users can create boxes
+const userSchema = new mongoose.Schema({  // Telling the database how to store the data
     usernmae: String,
     password: String,
     name: String,
@@ -35,7 +36,17 @@ const boxSchema = new mongoose.Schema({
     resetPasswordExpires: Date,
 });
 
-const Box = mongoose.model('Box', boxSchema); // Create a model based on the schema
+//Creating a schema for the boxes so unauthenticated users can create boxes
+const boxSchema = new mongoose.Schema({
+    boxId: String,
+    boxPassword: String,
+    boxCategory: String,
+    boxContent: String,
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false}, //if there is a user id store it but it is not required
+})
+
+const User = mongoose.model('User', userSchema); // Create a model based on the userSchema
+const Box = mongoose.model('Box', boxSchema); // Create a model based on the BoxSchema 
 
 app.use(bodyParser.json()); // With this you can send JSON to the server and it transforms it into a JavaScript object
 app.use(bodyParser.urlencoded({ extended: true })); // This allows you to send data from a form to the server
@@ -128,7 +139,60 @@ app.post('/reset', async (req, res) => {
     })
     
  //TODO: Add API endpoints to create, find, and delete boxes for Authenticated users and Unauthenticated users    
-// API endpoint to create a new box
+
+// API endpoints for authenticated users to create and find
+
+// API endpoint to create a box
+app.post('/create-auth', async (req, res) => {
+    const { boxId, password, name, category, content, token} = req.body;
+
+    try{
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const user = decoded.userId; // Get the user ID from the token
+        const existingBox = await Box.findOne({ boxId}); // Check if the boxId already exists
+        const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
+        const newBox = new Box({ boxId, password: hashedPassword, name, category, content, user})
+
+
+        if(existingBox){ // If the box already exists
+            return res.status(400).send('Box already exists');
+        }
+
+        await newBox.save(); // Save the box to the database
+
+        res.status(201).send('Box created successfully'); // Send a success message
+    } catch (error){
+        res.status(500).send('Error creating box: ' + error.message); // Send an error message
+    }
+});
+
+// API endpoint to find a box
+app.get('/find-auth', async (req, res) => {
+    const { boxId, token } = req.query;
+
+    try {
+        const deccoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const user = decoded.userId; // Get the user ID from the token
+        const box = await Box.findOne({ boxId, userId: user }); // Find a box by its ID and user ID
+
+        if(!box) // If the box does not exist or the user does not have access to it
+        {
+            return res.status(404).send('Box not found or you do not have access to it'); //Send an error message 
+        } 
+
+        res.json({ // Send the box data
+            name: box.name,
+            category: box.category,
+            content: box.content,
+        });
+    } catch (error) {
+        res.status(500).send('Error finding box: ' + error.message); // Send an error message
+    }
+});
+
+
+
+//TODO: Change api endpoints for unauthenticated users to create and find boxes
 app.post('/create', async (req, res) => {
     const {boxId, password, name, category, content } = req.body;
 
