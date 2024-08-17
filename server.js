@@ -30,7 +30,12 @@ const userSchema = new mongoose.Schema({  // Telling the database how to store t
         password: String,
         boxName: String,
         boxCategory: String,
-        boxContent: String,          
+        boxContent: String, 
+        //boxColor: String,
+        //boxSize: String,
+        //boxLocation: String,
+        //boxDate: Date,
+        //boxReminder: String,         
     }], // Array of boxes
     resetPasswordToken: String,
     resetPasswordExpires: Date,
@@ -70,8 +75,8 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
     const { identifier, password } = req.body;
     const user = await User.findOne({ $or: [{ username: identifier }, { email: identifier }] }); // Find a user by their username or email
-    if (!user || !await bcrypt.compare(password, user.password)) { // If the user does not exist or the password is incorrect
-        return res.status(401).send('Invalid username/email or password'); // Send an error message
+    if (!user || !await bcrypt.compare(password, user.password)) {
+        return res.status(401).send('Invalid credentials'); // Ensure response is sent and function exits
     }
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET); // Create a JWT token
     res.json({ token }); // Send the token
@@ -187,6 +192,24 @@ app.get('/find-auth', async (req, res) => {
         });
     } catch (error) {
         res.status(500).send('Error finding box: ' + error.message); // Send an error message
+    }
+});
+
+// API endpoint to get all boxes for a user
+app.get('/user-boxes', async (req, res) => {
+    const token = req.headers.authorization.split(' ')[1];
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.userId).populate('boxes');
+        if (!user) {
+            return res.status(404).send('User not found'); // Ensure response is sent and function exits
+        }
+        res.json(user.boxes); // Send the user's boxes
+    } catch (error) {
+        console.error('Error fetching user boxes:', error);
+        if (!res.headersSent) {
+            res.status(500).send('Internal Server Error'); // Ensure response is sent and function exits
+        }
     }
 });
 

@@ -10,8 +10,12 @@ document.getElementById('signin-form').addEventListener('submit', async (e) => {
         body: JSON.stringify({ usernameOrEmail, password }) // sends the username, name, email, and password as JSON
     });
     if (response.ok){ // if the response is okay
+        const data = await response.json(); // sets data = response of the API sent as JSON
         message.textContent = `Signing in. You will be redirected shortly`; // sets the text content of the message element to 'Account created successfully!'
         message.style.color = 'green'; // sets the color of the message element to green
+
+        localStorage.setItem('token', data.token); // sets the token in the local storage as the token from the API wich is stored as a cookie
+        window.location.href = '/dashboard.html'; // redirects the user to the dashboard
     }
     } catch (error) { // if there is an error
         message.textContent = `An error occurred: ${error}`; // sets the text content of the message element to 'An error occurred. Please try again later.'
