@@ -20,26 +20,22 @@ mongoose.connect(process.env.MONGO_URI) // Connect to MongoDB
 
 
 //Creating a schema for the users so authenticated users can create boxes
-const userSchema = new mongoose.Schema({  // Telling the database how to store the data
-    usernmae: String,
-    password: String,
-    name: String,
-    email: String,
-    boxes: [{ 
+const userSchema = new mongoose.Schema({
+    username: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    boxes: [{
         boxId: String,
         password: String,
         boxName: String,
         boxCategory: String,
-        boxContent: String, 
-        //boxColor: String,
-        //boxSize: String,
-        //boxLocation: String,
-        //boxDate: Date,
-        //boxReminder: String,         
-    }], // Array of boxes
+        boxContent: String,
+    }],
     resetPasswordToken: String,
     resetPasswordExpires: Date,
 });
+
 
 //Creating a schema for the boxes so unauthenticated users can create boxes
 const boxSchema = new mongoose.Schema({
@@ -61,25 +57,43 @@ app.use(cors()); // Enable CORS
 // API endpoint to register a new user
 app.post('/register', async (req, res) => {
     const { username, name, email, password } = req.body;
-    const existingUser = await User.findOne({ username }); // Check if the username already exists
-    if(existingUser) { // If the user already exists sends error message
-        return res.status(400).send('User already exists'); 
+
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({
+            username,
+            name,
+            email,
+            password: hashedPassword
+        });
+
+        await newUser.save();
+        res.status(201).json({ message: 'User registered successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Error registering user', error });
     }
-    const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
-    const newUser = new User({ username, name, email, password: hashedPassword }); // Create a new user
-    await newUser.save(); // Save the user to the database
-    res.status(201).send('User registered successfully'); // Send a success message
 });
 
 // API endpoint to login a user
 app.post('/login', async (req, res) => {
     const { identifier, password } = req.body;
-    const user = await User.findOne({ $or: [{ username: identifier }, { email: identifier }] }); // Find a user by their username or email
-    if (!user || !await bcrypt.compare(password, user.password)) {
-        return res.status(401).send('Invalid credentials'); // Ensure response is sent and function exits
+
+    try {
+        const user = await User.findOne({ $or: [{ username: identifier }, { email: identifier }] });
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid username or email' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid password' });
+        }
+
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+        res.json({ token });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error', error });
     }
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET); // Create a JWT token
-    res.json({ token }); // Send the token
 });
 
 // API endpoint to request a password reset
@@ -147,71 +161,86 @@ app.post('/reset', async (req, res) => {
 
 // API endpoints for authenticated users to create and find
 
-// API endpoint to create a box
+// API endpoint to create a box for authenticated users
 app.post('/create-auth', async (req, res) => {
-    const { boxId, password, name, category, content, token} = req.body;
+    const { boxId, password, name, category, content } = req.body;
+    const authHeader = req.headers['authorization'];
 
-    try{
+    if (!authHeader) {
+        return res.status(401).send('JWT must be provided');
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).send('JWT must be provided');
+    }
+
+    try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
-        const user = decoded.userId; // Get the user ID from the token
-        const existingBox = await Box.findOne({ boxId}); // Check if the boxId already exists
-        const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
-        const newBox = new Box({ boxId, password: hashedPassword, name, category, content, user})
+        const userId = decoded.userId; // Get the user ID from the token
+        const user = await User.findById(userId); // Find the user by ID
 
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
 
-        if(existingBox){ // If the box already exists
+        const existingBox = user.boxes.find(box => box.boxId === boxId); // Check if the boxId already exists
+
+        if (existingBox) {
             return res.status(400).send('Box already exists');
         }
 
-        await newBox.save(); // Save the box to the database
+        let hashedPassword = null;
+        if (password) {
+            hashedPassword = await bcrypt.hash(password, 10); // Hash the password if provided
+        }
 
-        res.status(201).send('Box created successfully'); // Send a success message
-    } catch (error){
-        res.status(500).send('Error creating box: ' + error.message); // Send an error message
+        const newBox = {
+            boxId,
+            password: hashedPassword,
+            boxName: name,
+            boxCategory: category,
+            boxContent: content,
+        };
+
+        user.boxes.push(newBox); // Add the new box to the user's boxes array
+        await user.save(); // Save the user to the database
+
+        res.status(201).send('Box created successfully');
+    } catch (error) {
+        res.status(500).send('Error creating box: ' + error.message);
     }
 });
 
-// API endpoint to find a box
+// API endpoint to find a box for authenticated users
+// API endpoint to find all boxes for authenticated users
 app.get('/find-auth', async (req, res) => {
-    const { boxId, token } = req.query;
+    const authHeader = req.headers['authorization'];
 
-    try {
-        const deccoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
-        const user = decoded.userId; // Get the user ID from the token
-        const box = await Box.findOne({ boxId, userId: user }); // Find a box by its ID and user ID
-
-        if(!box) // If the box does not exist or the user does not have access to it
-        {
-            return res.status(404).send('Box not found or you do not have access to it'); //Send an error message 
-        } 
-
-        res.json({ // Send the box data
-            name: box.name,
-            category: box.category,
-            content: box.content,
-        });
-    } catch (error) {
-        res.status(500).send('Error finding box: ' + error.message); // Send an error message
+    if (!authHeader) {
+        return res.status(401).send('JWT must be provided');
     }
-});
 
-// API endpoint to get all boxes for a user
-app.get('/user-boxes', async (req, res) => {
-    const token = req.headers.authorization.split(' ')[1];
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).send('JWT must be provided');
+    }
+
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const user = await User.findById(decoded.userId).populate('boxes');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const userId = decoded.userId; // Get the user ID from the token
+        const user = await User.findById(userId); // Find the user by ID
+
         if (!user) {
-            return res.status(404).send('User not found'); // Ensure response is sent and function exits
+            return res.status(404).send('User not found');
         }
-        res.json(user.boxes); // Send the user's boxes
+
+        res.status(200).json(user.boxes); // Send all boxes in the user's boxes array
     } catch (error) {
-        console.error('Error fetching user boxes:', error);
-        if (!res.headersSent) {
-            res.status(500).send('Internal Server Error'); // Ensure response is sent and function exits
-        }
+        res.status(500).send('Error finding boxes: ' + error.message);
     }
 });
+
 
 app.put('update-auth', async (req, res) => {
     const { boxId, oldPassword, newPassword, name, category, content, token } = req.body;
@@ -369,6 +398,8 @@ app.delete('/delete', async (req, res) => {
         res.status(500).send('Error deleting box: ' + error.message); // Send an error message
     }
 })
+
+
 
 
 app.listen(port, () => {  // Start the server
