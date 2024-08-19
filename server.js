@@ -213,8 +213,42 @@ app.post('/create-auth', async (req, res) => {
 });
 
 // API endpoint to find a box for authenticated users
+app.get('/find-auth', async (req, res) => {  // gets user-id and box-id from the request and returns the box
+    const { boxId } = req.query;
+    const authHeader = req.headers['authorization'];
+    const token = authHeader.split(' ')[1];
+
+    if(!authHeader){
+        return res.status(401).send('JWT must be provided');
+    }
+    if(!token){
+        return res.status(401).send('JWT must be provided');
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const userId = decoded.userId; // Get the user ID from the token
+        const user = await User.findById(userId); // Find the user by ID
+
+        if (!user) {
+            return res.status(404).send('User not found');
+        }
+
+        const box = user.boxes.find(box => box.boxId === boxId); // Find a box by its ID in the user's boxes array
+        
+        if (!box) {
+            return res.status(404).send('Box not found');
+        }
+
+        res.json({boxId: box.boxId, name: box.boxName, category: box.boxCategory, content: box.boxContent}); // Send the box data
+        
+    } catch (error) {
+        res.status(500).send('Error finding box: ' + error.message);
+        
+    }
+})
 // API endpoint to find all boxes for authenticated users
-app.get('/find-auth', async (req, res) => {
+app.get('/user-boxes', async (req, res) => {
     const authHeader = req.headers['authorization'];
 
     if (!authHeader) {

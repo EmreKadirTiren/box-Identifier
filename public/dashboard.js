@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     try {
-        const response = await fetch('/find-auth', { // Send a GET request to the /find-auth endpoint
+        const response = await fetch('/user-boxes', { // Send a GET request to the /find-auth endpoint
             headers: { Authorization: `Bearer ${token}` } // Set the Authorization header with the token
         });
 
