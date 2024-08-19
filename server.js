@@ -41,6 +41,7 @@ const userSchema = new mongoose.Schema({
 const boxSchema = new mongoose.Schema({
     boxId: String,
     password: String,
+    extraPasswords: [String], // Add an array of extra passwords
     category: String,
     content: String,
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false}, //if there is a user id store it but it is not required
@@ -364,8 +365,13 @@ app.get('/find', async (req, res) => {
             return res.status(404).send('Box not found');
         }
 
-        if (box.boxPassword !== password) { // if entered id and password do not match
-            return res.status(401).send('Invalid ID or password');
+        const isPasswordMatch = await bcrypt.compare(password, box.password); // Check if the password is correct  
+        const isExtraPasswordMatch = await Promise.all( // Check if the password matches any in the extra passwords array
+            box.extraPasswords.map(async (hashedPassword) => await bcrypt.compare(password, hashedPassword)) // Map over the extra passwords array and compare each one
+        ).then(matches => matches.some(match => match)); // Check if any of the extra passwords match
+
+        if(!isPasswordMatch && !isExtraPasswordMatch) { // If both the password and extra passwords do not match
+            return res.status(401).send('Invalid password'); // Send an error message
         }
 
         res.json({ // Send the box data
@@ -433,6 +439,53 @@ app.delete('/delete', async (req, res) => {
     }
 })
 
+// Share the box details with the user API
+// The api's we need to add are: /share-box-unauth-to-unauth
+// /share-box-unauth-to-auth
+// /share-box-auth-to-unauth
+// /share-box-auth-to-auth
+
+
+app.post('/share-box-unauth-to-unauth', async (req, res) => {
+    const { boxId, boxPassword } = req.body;
+    
+    try{
+        const box = await Box.findOne({ boxId, boxPassword }); // Find a box by its ID
+
+        if(!box){// If the box does not exist
+            return res.status(404).send('Box not found'); // Send an error message
+        }
+
+        const shareToken = jwt.sign({ boxId }, process.env.JWT_SECRET, { expiresIn: '24h' }); // Create a share token with the box ID that expires in 24 hours
+        const shareLink = `${process.env.BASE_URL}/set-password?token=${shareToken}`; // Create a share link with the share token
+
+        res.status(200).send({ shareLink }); // Send the share link
+    } catch (error) {
+        res.status(500).send('Error sharing box: ' + error.message); // Send an error message
+    }
+});
+
+//API that validates the share token and sets extra password for the box for unauthenticated users and then disables the share token
+app.post('/validate-sharebox-unauth', async (req, res) => {
+    const { token, newPassword } = req.body;
+
+    try{
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the share token
+        const box = await Box.findOne({ boxId: decoded.boxId }); // Find a box by its ID
+
+        if (!box) { // If the box does not exist
+            return res.status(404).send('Box not found'); // Send an error message
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10); // Hash the new password
+        box.extraPassword.push(hashedPassword) // Add the new password to the extra passwords array
+        await box.save(); // Save the updated box to the database
+
+        res.status(200).send('Password set successfully'); // Send a success message
+    } catch (error) { // If there is an error
+        res.status(500).send('Error setting password: ' + error.message); // Send an error message
+    }
+});
 
 
 
