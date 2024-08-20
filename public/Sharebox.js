@@ -1,10 +1,10 @@
-// document.addEventListener('DOMContentLoaded', () => {
-//     const token = localStorage.getItem('token');
-//     if (token) {
-//         window.location.href = '/sharebox-auth.html';
-//         return;
-//     }
-// });
+document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        window.location.href = '/sharebox-auth.html';
+        return;
+    }
+});
 
 document.getElementById('shareBoxForm').addEventListener('submit', async function (event) {
     event.preventDefault();
@@ -12,8 +12,10 @@ document.getElementById('shareBoxForm').addEventListener('submit', async functio
     const boxId = document.getElementById('boxId').value;
     const boxPassword = document.getElementById('boxPassword').value;
 
+    console.log('Sending request with', { boxId, boxPassword });
+
     try {
-        const response = await fetch('/share-box-unauth-to-unauth', {
+        const response = await fetch('/share-box-unauth', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -21,15 +23,24 @@ document.getElementById('shareBoxForm').addEventListener('submit', async functio
             body: JSON.stringify({ boxId, boxPassword })
         });
 
+        console.log('Received response:', response);
+
         if (response.ok) {
             const data = await response.json();
-            const shareLink = `http://${window.location.host}/validate-sharebox-unauth?token=${data.token}`;
-            document.getElementById('result').innerHTML = `<p>Share Link: <a href="${shareLink}" target="_blank">${shareLink}</a></p>`;
+            console.log('Response data:', data);
+
+            if (data.token) {
+                const shareLink = `http://${window.location.host}/validate-sharebox-unauth?token=${data.token}`;
+                document.getElementById('result').innerHTML = `<p>Share Link: <a href="${shareLink}" target="_blank">${shareLink}</a></p>`;
+            } else {
+                document.getElementById('result').innerHTML = `<p>Error: ${data.message}</p>`;
+            }
         } else {
-            const error = await response.text();
-            document.getElementById('result').innerHTML = `<p style="color: red;">Error: ${error}</p>`;
+            const errorData = await response.json();
+            document.getElementById('result').innerHTML = `<p>Error: ${errorData.message}</p>`;
         }
     } catch (error) {
-        document.getElementById('result').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+        console.error('Error:', error);
+        document.getElementById('result').innerHTML = `<p>Error: ${error.message}</p>`;
     }
 });

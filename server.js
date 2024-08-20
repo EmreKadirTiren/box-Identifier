@@ -463,34 +463,32 @@ app.delete('/delete', async (req, res) => {
 })
 
 // Share the box details with the user API
-app.post('/share-box-unauth', async (req, res) => { 
-    const { boxId, boxPassword } = req.body; // Get the boxId and boxPassword from the request body
+app.post('/share-box-unauth', async (req, res) => {
+    const { boxId, boxPassword } = req.body;
 
     try {
-        const box = await Box.findOne({ boxId }); // Find a box by its ID
-        if (!box) { //if no box
-            return res.status(404).send('Box not found'); // Send an error message
+        const box = await Box.findOne({ boxId });
+        if (!box) {
+            return res.status(404).json({ message: 'Box not found' });
         }
 
-        const isPasswordMatch = await bcrypt.compare(boxPassword, box.password); // Check if the password is correct
-        if (!isPasswordMatch) {
-            return res.status(401).send('Incorrect password'); 
+        const isPasswordMatch = await bcrypt.compare(boxPassword, box.password);
+        const isExtraPasswordMatch = await Promise.all(
+            box.extraPasswords.map(async (hashedPassword) => await bcrypt.compare(boxPassword, hashedPassword))
+        ).then(matches => matches.some(match => match));
+
+        if (!isPasswordMatch && !isExtraPasswordMatch) {
+            return res.status(401).json({ message: 'Incorrect password' });
         }
 
-        const sharedPasswordMatch = await bcrypt.compare(boxPassword, box.extraPasswords); // Check if the password is correct
+        const token = jwt.sign({ boxId: box._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-        if (sharedPasswordMatch){
-            return res.status(401).send('You are not authorized to share this box, ask the owner to share it somone');
-        }
-
-        const shareToken = jwt.sign({ boxId }, process.env.JWT_SECRET, { expiresIn: '24h' }); // Create a share token with a 24-hour expiration
-        const shareLink = `https://${process.env.MAINSITE}/share/${shareToken}`; // Create a share link
-        res.json({ link: shareLink }); // Send the share link
+        res.json({ token });
     } catch (error) {
-        res.status(500).send('Error sharing box: ' + error.message); // Send an error message
+        console.error('Error:', error);
+        res.status(500).json({ message: 'Server error', error });
     }
 });
-
 
 //API's so sharetokens can be used to get the box details 
 app.post('/validate-sharebox-unauth', async (req, res) => {
@@ -521,4 +519,8 @@ app.post('/validate-sharebox-unauth', async (req, res) => {
     } catch (error) {
         res.status(500).send('Error validating share token: ' + error.message); // Send an error message
     }
+});
+
+app.listen(port, () => {  // Start the server
+    console.log(`Server is running on port https://localhost:${port}`); // Tells where the server is running
 });
