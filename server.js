@@ -32,6 +32,7 @@ const userSchema = new mongoose.Schema({
         boxCategory: String,
         boxContent: String,
     }],
+    sharedBoxes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Box' }], // Add an array of shared boxes
     resetPasswordToken: String,
     resetPasswordExpires: Date,
 });
@@ -217,11 +218,13 @@ app.post('/create-auth', async (req, res) => {
 app.get('/find-auth', async (req, res) => {  // gets user-id and box-id from the request and returns the box
     const { boxId } = req.query;
     const authHeader = req.headers['authorization'];
-    const token = authHeader.split(' ')[1];
+
 
     if(!authHeader){
         return res.status(401).send('JWT must be provided');
     }
+
+    const token = authHeader.split(' ')[1];
     if(!token){
         return res.status(401).send('JWT must be provided');
     }
@@ -235,12 +238,17 @@ app.get('/find-auth', async (req, res) => {  // gets user-id and box-id from the
             return res.status(404).send('User not found');
         }
 
-        const box = user.boxes.find(box => box.boxId === boxId); // Find a box by its ID in the user's boxes array
-        
+        //Check if the box exists in the user's boxes array
+        let box = user.boxes.find(box => box.boxId === boxId);
+
         if (!box) {
-            return res.status(404).send('Box not found');
+            box = user.sharedBoxes.find(box => box.boxId === boxId);
         }
 
+        if(!box){ // if the box still does not exist
+            return res.status(404).send('Box not found');
+        }
+        
         res.json({boxId: box.boxId, name: box.boxName, category: box.boxCategory, content: box.boxContent}); // Send the box data
         
     } catch (error) {
@@ -270,7 +278,23 @@ app.get('/user-boxes', async (req, res) => {
             return res.status(404).send('User not found');
         }
 
-        res.status(200).json(user.boxes); // Send all boxes in the user's boxes array
+        const allBoxes = [ // Combine the user's boxes and sharedBoxes into one array
+            ...user.boxes.map(box => ({ // Map over the user's boxes and return an object with the box data
+                boxId: box.boxId,
+                name: box.boxName,
+                category: box.boxCategory,
+                content: box.boxContent,
+                isShared: false
+            })),
+            ...user.sharedBoxes.map(box => ({ // Map over the sharedBoxes and return an object with the box data
+                boxId: box.boxId,
+                name: box.boxName,
+                category: box.boxCategory,
+                content: box.boxContent,
+                isShared: true
+            }))
+        ];
+        res.json(allBoxes); // Send all boxes
     } catch (error) {
         res.status(500).send('Error finding boxes: ' + error.message);
     }
@@ -465,6 +489,8 @@ app.post('/share-box-unauth-to-unauth', async (req, res) => {
     }
 });
 
+
+
 //API that validates the share token and sets extra password for the box for unauthenticated users and then disables the share token
 app.post('/validate-sharebox-unauth', async (req, res) => {
     const { token, newPassword } = req.body;
@@ -486,6 +512,43 @@ app.post('/validate-sharebox-unauth', async (req, res) => {
         res.status(500).send('Error setting password: ' + error.message); // Send an error message
     }
 });
+
+app.post('/validate-sharebox-auth', async (req, res) =>{
+    const { shareToken, userToken } = req.body;
+
+    try{
+    const shareTokenDecoded = jwt.verify(shareToken, process.env.JWT_SECRET);
+    const userTokenDecoded = jwt.verify(userToken, process.env.JWT_SECRET);
+
+    const box = await Box.findOne({ boxId: shareTokenDecoded.boxId });
+
+    if(!box){ // If the box does not exist
+        return res.status(404).send('Box not found'); // Send an error message
+    }
+
+    const user = await User.findById(userTokenDecoded.userId); // Find the user by ID
+    if(!user){ // If the user does not exist
+        return res.status(404).send('User not found'); // Send an error message
+    }
+    //Connect the box to the user somehow so he can view it but not change the contents // if there is no other way copy box to userId for auth user
+
+    if(!user.sharedBoxes.includes(box._id)){ // If the user does not already have access to the box
+        user.sharedBoxes.push(box._id);
+        await user.save();
+    }
+    //if the users already has access to the box
+    if(user.sharedBoxes.includes(box._id)){
+        return res.status(400).send('User already has access to the box');
+    }
+
+    res.status(200).send('Box shared successfully'); // Send a success message
+      
+
+    } catch (error) { // If there is an error
+        res.status(500).send('Error sharing box: ' + error.message); // Send an error message
+    }
+})
+
 
 
 

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Share Box</title>
+    <style ref="stylesheet" href="styles.css"></style>
+</head>
+<body>
+    <div class="container">
+        <h2>Share Box</h2>
+        <form id="shareBoxForm">
+            <div class="form-group">
+                <label for="boxId">Box ID</label>
+                <input type="text" id="boxId" name="boxId" required>
+            </div>
+            <div class="form-group">
+                <label for="boxPassword">Box Password</label>
+                <input type="password" id="boxPassword" name="boxPassword" required>
+            </div>
+            <div class="form-group">
+                <button type="submit">Generate Share Link</button>
+            </div>
+        </form>
+        <div class="result" id="result"></div>
+    </div>
+    <script src="sharebox.js"></script>
+</body>
+</html>
