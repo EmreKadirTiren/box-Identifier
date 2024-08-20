@@ -385,26 +385,25 @@ app.get('/find', async (req, res) => {
 
     try {
         const box = await Box.findOne({ boxId }); // Find a box by its ID
-        if (!box) { // If the box does not exist
-            return res.status(404).send('Box not found');
+        if (!box) {
+            return res.status(404).send('Box not found'); // Send an error message if the box is not found
         }
 
-        const isPasswordMatch = await bcrypt.compare(password, box.password); // Check if the password is correct  
-        const isExtraPasswordMatch = await Promise.all( // Check if the password matches any in the extra passwords array
-            box.extraPasswords.map(async (hashedPassword) => await bcrypt.compare(password, hashedPassword)) // Map over the extra passwords array and compare each one
-        ).then(matches => matches.some(match => match)); // Check if any of the extra passwords match
+        const isPasswordMatch = await bcrypt.compare(password, box.password); // Check if the password matches the main password
+        const isExtraPasswordMatch = await Promise.all(
+            box.extraPasswords.map(async (hashedPassword) => await bcrypt.compare(password, hashedPassword))
+        ).then(matches => matches.some(match => match)); // Check if the password matches any of the extra passwords
 
-        if(!isPasswordMatch && !isExtraPasswordMatch) { // If both the password and extra passwords do not match
-            return res.status(401).send('Invalid password'); // Send an error message
+        if (!isPasswordMatch && !isExtraPasswordMatch) {
+            return res.status(401).send('Invalid password'); // Send an error message if the password is invalid
         }
 
-        res.json({ // Send the box data
+        res.json({
             name: box.boxName,
             category: box.boxCategory,
             content: box.boxContent,
-        });
-    }
-    catch (error) {
+        }); // Send the box details
+    } catch (error) {
         res.status(500).send('Error finding box: ' + error.message); // Send an error message
     }
 });
@@ -464,98 +463,62 @@ app.delete('/delete', async (req, res) => {
 })
 
 // Share the box details with the user API
-// The api's we need to add are: /share-box-unauth-to-unauth
-// /share-box-unauth-to-auth
-// /share-box-auth-to-unauth
-// /share-box-auth-to-auth
+app.post('/share-box-unauth', async (req, res) => { 
+    const { boxId, boxPassword } = req.body; // Get the boxId and boxPassword from the request body
 
-
-app.post('/share-box-unauth-to-unauth', async (req, res) => {
-    const { boxId, boxPassword } = req.body;
-    
-    try{
-        const box = await Box.findOne({ boxId, boxPassword }); // Find a box by its ID
-
-        if(!box){// If the box does not exist
+    try {
+        const box = await Box.findOne({ boxId }); // Find a box by its ID
+        if (!box) { //if no box
             return res.status(404).send('Box not found'); // Send an error message
         }
 
-        const shareToken = jwt.sign({ boxId }, process.env.JWT_SECRET, { expiresIn: '24h' }); // Create a share token with the box ID that expires in 24 hours
-        const shareLink = `${process.env.BASE_URL}/set-password?token=${shareToken}`; // Create a share link with the share token
+        const isPasswordMatch = await bcrypt.compare(boxPassword, box.password); // Check if the password is correct
+        if (!isPasswordMatch) {
+            return res.status(401).send('Incorrect password'); 
+        }
 
-        res.status(200).send({ shareLink }); // Send the share link
+        const sharedPasswordMatch = await bcrypt.compare(boxPassword, box.extraPasswords); // Check if the password is correct
+
+        if (sharedPasswordMatch){
+            return res.status(401).send('You are not authorized to share this box, ask the owner to share it somone');
+        }
+
+        const shareToken = jwt.sign({ boxId }, process.env.JWT_SECRET, { expiresIn: '24h' }); // Create a share token with a 24-hour expiration
+        const shareLink = `https://${process.env.MAINSITE}/share/${shareToken}`; // Create a share link
+        res.json({ link: shareLink }); // Send the share link
     } catch (error) {
         res.status(500).send('Error sharing box: ' + error.message); // Send an error message
     }
 });
 
 
-
-//API that validates the share token and sets extra password for the box for unauthenticated users and then disables the share token
+//API's so sharetokens can be used to get the box details 
 app.post('/validate-sharebox-unauth', async (req, res) => {
-    const { token, newPassword } = req.body;
+    const { token, newPassword } = req.body; // Get the token and newPassword from the request body
 
-    try{
-        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the share token
-        const box = await Box.findOne({ boxId: decoded.boxId }); // Find a box by its ID
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET); // Verify the JWT token
+        const box = await Box.findOne({ boxId: decoded.boxId }); // Find the box by its ID
 
-        if (!box) { // If the box does not exist
-            return res.status(404).send('Box not found'); // Send an error message
+        if (!box) {
+            return res.status(404).send('Box not found'); // Send an error message if the box is not found
         }
 
-        const hashedPassword = await bcrypt.hash(newPassword, 10); // Hash the new password
-        box.extraPassword.push(hashedPassword) // Add the new password to the extra passwords array
-        await box.save(); // Save the updated box to the database
+        const isPasswordMatch = await bcrypt.compare(newPassword, box.password); // Check if the new password matches the main password
+        const isExtraPasswordMatch = await Promise.all(
+            box.extraPasswords.map(async (hashedPassword) => await bcrypt.compare(newPassword, hashedPassword))
+        ).then(matches => matches.some(match => match)); // Check if the new password matches any of the extra passwords
 
-        res.status(200).send('Password set successfully'); // Send a success message
-    } catch (error) { // If there is an error
-        res.status(500).send('Error setting password: ' + error.message); // Send an error message
+        if (!isPasswordMatch && !isExtraPasswordMatch) {
+            return res.status(401).send('Invalid password'); // Send an error message if the password is invalid
+        }
+
+        res.json({
+            name: box.boxName,
+            category: box.boxCategory,
+            content: box.boxContent,
+        }); // Send the box details
+    } catch (error) {
+        res.status(500).send('Error validating share token: ' + error.message); // Send an error message
     }
 });
-
-app.post('/validate-sharebox-auth', async (req, res) =>{
-    const { shareToken, userToken } = req.body;
-
-    try{
-    const shareTokenDecoded = jwt.verify(shareToken, process.env.JWT_SECRET);
-    const userTokenDecoded = jwt.verify(userToken, process.env.JWT_SECRET);
-
-    const box = await Box.findOne({ boxId: shareTokenDecoded.boxId });
-
-    if(!box){ // If the box does not exist
-        return res.status(404).send('Box not found'); // Send an error message
-    }
-
-    const user = await User.findById(userTokenDecoded.userId); // Find the user by ID
-    if(!user){ // If the user does not exist
-        return res.status(404).send('User not found'); // Send an error message
-    }
-    //Connect the box to the user somehow so he can view it but not change the contents // if there is no other way copy box to userId for auth user
-
-    if(!user.sharedBoxes.includes(box._id)){ // If the user does not already have access to the box
-        user.sharedBoxes.push(box._id);
-        await user.save();
-    }
-    //if the users already has access to the box
-    if(user.sharedBoxes.includes(box._id)){
-        return res.status(400).send('User already has access to the box');
-    }
-
-    res.status(200).send('Box shared successfully'); // Send a success message
-      
-
-    } catch (error) { // If there is an error
-        res.status(500).send('Error sharing box: ' + error.message); // Send an error message
-    }
-})
-
-
-
-
-app.listen(port, () => {  // Start the server
-    console.log(`Server is running on port https://localhost:${port}`); // Tells where the server is running
-});
-
-
-
-
