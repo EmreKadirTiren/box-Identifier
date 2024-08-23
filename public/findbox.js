@@ -1,3 +1,10 @@
+document.addEventListener('DOMContentLoaded', function() { //if the page is loaded
+    const token = localStorage.getItem('token'); // gets the token from the local storage
+    if (token) { // if the token exists
+        window.location.href = '/findbox-auth.html'; // redirects the user to the findbox-auth.html page
+    }
+});
+
 document.getElementById('findBoxForm').addEventListener('submit', function(event) { // Add an event listener to the form
     event.preventDefault(); // Prevent the default form submission
 
